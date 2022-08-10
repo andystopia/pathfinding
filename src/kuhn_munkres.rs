@@ -21,13 +21,6 @@ pub trait Weights<C> {
     /// Return the element at position.
     #[must_use]
     fn at(&self, row: usize, col: usize) -> C;
-
-    /// Return the negated weights.
-    #[must_use]
-    fn neg(&self) -> Self
-    where
-        Self: Sized,
-        C: Signed;
 }
 
 impl<C: Copy> Weights<C> for Matrix<C> {
@@ -42,12 +35,55 @@ impl<C: Copy> Weights<C> for Matrix<C> {
     fn at(&self, row: usize, col: usize) -> C {
         self[(row, col)]
     }
+}
 
-    fn neg(&self) -> Self
-    where
-        C: Signed,
-    {
-        -self.clone()
+/// # Definition of Negative Weights
+/// 
+/// Used for minimization of the kuhn munkres
+/// algorithm by transforming values used 
+/// for maximimization to their negative, so 
+/// that the score can be minimized instead.
+struct NegativeWeights<'a, C, W>
+where
+    W: Weights<C>,
+{
+    weights: &'a W,
+    phantom: std::marker::PhantomData<C>,
+}
+
+impl<'a, C, W> NegativeWeights<'a, C, W>
+where
+    W: Weights<C>,
+{
+    /// Construct a negative weights
+    /// 
+    /// A negative weights struct reverses
+    /// the priority of weights for 
+    /// the sake of the kuhn munkres algorithm
+    pub fn new(weights: &'a W) -> Self {
+        Self {
+            weights,
+            phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, C, W> Weights<C> for NegativeWeights<'a, C, W>
+where
+    C: std::ops::Neg<Output = C>,
+    W: Weights<C>,
+{
+    fn rows(&self) -> usize {
+        self.weights.rows()
+    }
+
+    fn columns(&self) -> usize {
+        self.weights.columns()
+    }
+
+    fn at(&self, row: usize, col: usize) -> C {
+        // negate weights
+        -self.weights.at(row, col)
     }
 }
 
@@ -260,6 +296,6 @@ where
     C: Bounded + Sum<C> + Zero + Signed + Ord + Copy,
     W: Weights<C>,
 {
-    let (total, assignments) = kuhn_munkres(&weights.neg());
+    let (total, assignments) = kuhn_munkres(&NegativeWeights::new(weights));
     (-total, assignments)
 }
